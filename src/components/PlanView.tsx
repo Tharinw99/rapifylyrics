@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { db } from '../lib/firebase';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { RapSong, PlanContent } from '../types';
 import { ArrowLeft, Lightbulb, BookOpen, Music2, PenLine } from 'lucide-react';
 import { handleFirestoreError, OperationType } from '../lib/firestore_errors';
@@ -17,30 +17,30 @@ const DEFAULT_PLAN: PlanContent = {
 export function PlanView() {
   const { planId } = useParams();
   const navigate = useNavigate();
-  const [song, setSong] = useState<RapSong | null>(null);
-  const [plan, setPlan] = useState<PlanContent>(DEFAULT_PLAN);
+  const location = useLocation();
+  const initialData = location.state?.initialData as RapSong | undefined;
+
+  const [song, setSong] = useState<RapSong | null>(initialData || null);
+  const [plan, setPlan] = useState<PlanContent>(() => {
+    if (initialData?.contentJson) {
+      try { return JSON.parse(initialData.contentJson); } catch(e) {}
+    }
+    return DEFAULT_PLAN;
+  });
   
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    async function loadPlan() {
-      if (!planId) return;
-      try {
-        const docSnap = await getDoc(doc(db, 'songs', planId));
-        if (docSnap.exists()) {
-          const data = { id: docSnap.id, ...docSnap.data() } as RapSong;
-          setSong(data);
-          try {
-            if (data.contentJson) {
-              setPlan(JSON.parse(data.contentJson));
-            }
-          } catch(e) {}
-        }
-      } catch (e) {
-        handleFirestoreError(e, OperationType.GET, `songs/${planId}`);
+    if (!planId) return;
+    const unsub = onSnapshot(doc(db, 'songs', planId), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = { id: docSnap.id, ...docSnap.data() } as RapSong;
+        setSong(prev => ({ ...prev, ...data }));
       }
-    }
-    loadPlan();
+    }, (e) => {
+      handleFirestoreError(e, OperationType.GET, `songs/${planId}`);
+    });
+    return unsub;
   }, [planId]);
 
   useEffect(() => {

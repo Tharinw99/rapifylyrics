@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { db } from '../lib/firebase';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { RapSong, AlbumContent, AlbumTrack } from '../types';
 import { ArrowLeft, Disc3, Music, Plus, GripVertical, Trash2 } from 'lucide-react';
 import { handleFirestoreError, OperationType } from '../lib/firestore_errors';
@@ -14,30 +14,30 @@ const DEFAULT_ALBUM: AlbumContent = {
 export function AlbumView() {
   const { albumId } = useParams();
   const navigate = useNavigate();
-  const [song, setSong] = useState<RapSong | null>(null);
-  const [album, setAlbum] = useState<AlbumContent>(DEFAULT_ALBUM);
+  const location = useLocation();
+  const initialData = location.state?.initialData as RapSong | undefined;
+
+  const [song, setSong] = useState<RapSong | null>(initialData || null);
+  const [album, setAlbum] = useState<AlbumContent>(() => {
+    if (initialData?.contentJson) {
+      try { return JSON.parse(initialData.contentJson); } catch(e) {}
+    }
+    return DEFAULT_ALBUM;
+  });
   
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    async function loadAlbum() {
-      if (!albumId) return;
-      try {
-        const docSnap = await getDoc(doc(db, 'songs', albumId));
-        if (docSnap.exists()) {
-          const data = { id: docSnap.id, ...docSnap.data() } as RapSong;
-          setSong(data);
-          try {
-            if (data.contentJson) {
-              setAlbum(JSON.parse(data.contentJson));
-            }
-          } catch(e) {}
-        }
-      } catch (e) {
-        handleFirestoreError(e, OperationType.GET, `songs/${albumId}`);
+    if (!albumId) return;
+    const unsub = onSnapshot(doc(db, 'songs', albumId), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = { id: docSnap.id, ...docSnap.data() } as RapSong;
+        setSong(prev => ({ ...prev, ...data }));
       }
-    }
-    loadAlbum();
+    }, (e) => {
+      handleFirestoreError(e, OperationType.GET, `songs/${albumId}`);
+    });
+    return unsub;
   }, [albumId]);
 
   useEffect(() => {

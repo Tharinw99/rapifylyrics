@@ -70,7 +70,7 @@ export function DriveView() {
     setIsDropdownOpen(false);
     if (!user) return;
     try {
-      const docRef = await addDoc(collection(db, 'songs'), {
+      const newDoc = {
         ownerId: user.uid,
         title: type === 'song' ? 'Untitled Rap' : type === 'plan' ? 'New Plan' : 'New Album',
         docType: type,
@@ -78,8 +78,9 @@ export function DriveView() {
         contentJson: '{}',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
-      navigate(`/${type === 'song' ? 'editor' : type}/${docRef.id}`);
+      };
+      const docRef = await addDoc(collection(db, 'songs'), newDoc);
+      navigate(`/${type === 'song' ? 'editor' : type}/${docRef.id}`, { state: { initialData: { id: docRef.id, ...newDoc } } });
     } catch (e) {
       handleFirestoreError(e, OperationType.CREATE, 'songs');
     }
@@ -97,7 +98,7 @@ export function DriveView() {
 
   const handleNavigation = (song: RapSong) => {
     const type = song.docType || 'song';
-    navigate(`/${type === 'song' ? 'editor' : type}/${song.id}`);
+    navigate(`/${type === 'song' ? 'editor' : type}/${song.id}`, { state: { initialData: song } });
   }
 
   if (authLoading) {

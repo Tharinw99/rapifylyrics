@@ -6,8 +6,8 @@ import { Section, SectionType, RapSong } from '../types';
 import { Plus, Upload, Mic2, ArrowLeft, FileText, Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { generateKaraokeTimeline, KaraokeLine } from '../lib/karaoke';
-import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { db, getAccessToken, googleSignIn } from '../lib/firebase';
 import { handleFirestoreError, OperationType } from '../lib/firestore_errors';
 import * as idb from 'idb-keyval';
@@ -15,12 +15,20 @@ import * as idb from 'idb-keyval';
 export function EditorView() {
   const { songId } = useParams();
   const navigate = useNavigate();
-  const [song, setSong] = useState<RapSong | null>(null);
+  const location = useLocation();
+  const initialData = location.state?.initialData as RapSong | undefined;
+
+  const [song, setSong] = useState<RapSong | null>(initialData || null);
   const [isExporting, setIsExporting] = useState(false);
   
-  const [sections, setSections] = useState<Section[]>([]);
+  const [sections, setSections] = useState<Section[]>(() => {
+    if (initialData?.sectionsJson) {
+      try { return JSON.parse(initialData.sectionsJson); } catch(e) { return []; }
+    }
+    return [];
+  });
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [audioName, setAudioName] = useState<string | null>(null);
+  const [audioName, setAudioName] = useState<string | null>(initialData?.audioName || null);
   const [isDragging, setIsDragging] = useState(false);
   const [isSectionMenuOpen, setIsSectionMenuOpen] = useState(false);
   
@@ -38,31 +46,38 @@ export function EditorView() {
   const saveTitleTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    async function loadSong() {
-      if (!songId) return;
-      try {
-        const docSnap = await getDoc(doc(db, 'songs', songId));
-        if (docSnap.exists()) {
-          const data = { id: docSnap.id, ...docSnap.data() } as RapSong;
-          setSong(data);
-          try {
-            setSections(JSON.parse(data.sectionsJson));
-          } catch(e) {}
-          
-          setAudioName(data.audioName || null);
-          if (data.localBeatId) {
-            const beatFile = await idb.get(data.localBeatId) as Blob;
-            if (beatFile) {
-              setAudioUrl(URL.createObjectURL(beatFile));
-            }
+    if (initialData?.localBeatId) {
+      idb.get(initialData.localBeatId).then((beatFile: any) => {
+        if (beatFile) setAudioUrl(URL.createObjectURL(beatFile));
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!songId) return;
+    const unsub = onSnapshot(doc(db, 'songs', songId), async (docSnap) => {
+      if (docSnap.exists()) {
+        const data = { id: docSnap.id, ...docSnap.data() } as RapSong;
+        setSong(prev => ({ ...prev, ...data }));
+        
+        // We only want to auto-load sections initially or from external changes,
+        // but if we overwrite it every time, it might disrupt local typing before debounce fires.
+        // For simplicity, we just keep local state single-source truth and rely on `onSnapshot`
+        // merely as a passive sync. But we do need audio.
+        
+        if (data.audioName) setAudioName(data.audioName);
+        if (data.localBeatId && (!initialData || data.localBeatId !== initialData.localBeatId)) {
+          const beatFile = await idb.get(data.localBeatId) as Blob;
+          if (beatFile && !audioUrl) {
+            setAudioUrl(URL.createObjectURL(beatFile));
           }
         }
-      } catch (e) {
-        handleFirestoreError(e, OperationType.GET, `songs/${songId}`);
       }
-    }
-    loadSong();
-  }, [songId]);
+    }, (e) => {
+      handleFirestoreError(e, OperationType.GET, `songs/${songId}`);
+    });
+    return unsub;
+  }, [songId, initialData?.localBeatId]);
 
   // Auto-save
   useEffect(() => {

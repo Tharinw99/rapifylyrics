@@ -124,8 +124,13 @@ export function EditorSection({ section, onChange, onToggleCollapse, onRemove, i
             placeholder="Write your bars here..."
             className={cn(
               "w-full bg-transparent resize-none outline-none text-lg md:text-xl font-medium leading-[1.8] tracking-tight placeholder:text-zinc-800 relative z-10",
-              isRhymeCheckOn ? "text-transparent caret-white" : "text-zinc-100"
+              !isRhymeCheckOn && "text-zinc-100"
             )}
+            style={{
+              color: isRhymeCheckOn ? 'transparent' : undefined,
+              caretColor: isRhymeCheckOn ? 'white' : undefined,
+              WebkitTextFillColor: isRhymeCheckOn ? 'transparent' : undefined
+            }}
             spellCheck={false}
           />
           {section.content.length > 0 && (
