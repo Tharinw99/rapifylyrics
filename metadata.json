@@ -1,0 +1,6 @@
+{
+  "name": "Rapify",
+  "description": "Minimalist, structure-focused rap lyric writer with an integrated beat player, syllable counting, and realistic bar-to-bar karaoke flow engine.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
